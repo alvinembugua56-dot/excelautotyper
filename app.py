@@ -50,8 +50,8 @@ SECRET = (cfg("SECRET_KEY")
 VAPID_PRIVATE = cfg("VAPID_PRIVATE_KEY")
 VAPID_PUBLIC = cfg("VAPID_PUBLIC_KEY")
 VAPID_SUBJECT = cfg("VAPID_SUBJECT", "mailto:owner@example.com")
-KV_URL = cfg("KV_REST_API_URL") or cfg("UPSTASH_REDIS_REST_URL")
-KV_TOKEN = cfg("KV_REST_API_TOKEN") or cfg("UPSTASH_REDIS_REST_TOKEN")
+KV_URL = (cfg("KV_REST_API_URL") or cfg("UPSTASH_REDIS_REST_URL")).strip().strip("\"'")
+KV_TOKEN = (cfg("KV_REST_API_TOKEN") or cfg("UPSTASH_REDIS_REST_TOKEN")).strip().strip("\"'")
 DB_PATH = cfg("DB_PATH", "/tmp/doorman.db" if ON_VERCEL else str(BASE / "doorman.db"))
 
 TTL = 300           # seconds a request stays open
