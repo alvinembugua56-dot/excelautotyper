@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Doorman</title>
+<meta name="theme-color" content="#EEF3F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1A1C" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Doorman">
+<style>
+  :root {
+    --paper: #EEF3F0;
+    --card: #FFFFFF;
+    --ink: #10272A;
+    --muted: #55696D;
+    --line: #CFDBD6;
+    --brass: #8A6512;
+    --go: #17795A;
+    --go-ink: #FFFFFF;
+    --stop: #B3382C;
+    --focus: #1B5FD1;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0B1A1C;
+      --card: #12292C;
+      --ink: #E7F0EC;
+      --muted: #94ADAF;
+      --line: #264543;
+      --brass: #E0B04C;
+      --go: #3FBF93;
+      --go-ink: #06241A;
+      --stop: #EE7366;
+      --focus: #7FB0FF;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.45 var(--sans);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 0 18px 48px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 8px; }
+  .brand { font: 700 26px/1 var(--serif); letter-spacing: .01em; }
+  .watch { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--go); }
+  .dot.off { background: var(--muted); }
+
+  h1 { font: 700 30px/1.15 var(--serif); margin: 28px 0 6px; }
+  h2 { font: 700 19px/1.2 var(--serif); margin: 30px 0 12px; }
+  p.lead { color: var(--muted); margin: 0 0 18px; max-width: 46ch; }
+
+  /* sign-in */
+  form { display: grid; gap: 12px; max-width: 380px; }
+  label { font-weight: 600; font-size: 14px; }
+  input[type=password] {
+    width: 100%; font: inherit; padding: 14px; border-radius: 10px;
+    border: 1.5px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  .err { color: var(--stop); font-size: 14px; min-height: 1.3em; margin: 0; }
+
+  button { font: inherit; cursor: pointer; border-radius: 10px; min-height: 48px; padding: 0 18px;
+           border: 1.5px solid transparent; font-weight: 650; }
+  .primary { background: var(--go); color: var(--go-ink); }
+  .ghost { background: transparent; color: var(--go); border-color: var(--go); }
+  .danger { background: transparent; color: var(--stop); border-color: var(--stop); }
+  .link { background: none; border: 0; color: var(--muted); text-decoration: underline; min-height: 40px; padding: 0; font-weight: 500; }
+  button:active { transform: translateY(1px); }
+  button[disabled] { opacity: .55; cursor: default; }
+
+  /* request ticket */
+  .ticket { display: flex; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+  .ticket .main { flex: 1; min-width: 0; padding: 16px 14px 16px 18px; }
+  .ticket .pc { font-weight: 700; font-size: 18px; overflow-wrap: anywhere; }
+  .ticket .meta { color: var(--muted); font-size: 14px; margin-top: 4px; overflow-wrap: anywhere; }
+  .ticket .clock { color: var(--muted); font-size: 13px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .stub { position: relative; width: 132px; border-left: 2px dashed var(--line);
+          display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 8px; }
+  .stub::before, .stub::after { content: ""; position: absolute; left: -11px; width: 20px; height: 10px;
+          background: var(--paper); border: 1px solid var(--line); }
+  .stub::before { top: -1px; border-top: 0; border-radius: 0 0 10px 10px; }
+  .stub::after { bottom: -1px; border-bottom: 0; border-radius: 10px 10px 0 0; }
+  .code { font: 700 42px/1 var(--serif); letter-spacing: .06em; color: var(--brass); font-variant-numeric: tabular-nums; }
+  .stub small { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: center; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0 0; }
+  .actions .primary { grid-column: 1 / -1; }
+  .req + .req { margin-top: 22px; }
+
+  .empty { border: 1.5px dashed var(--line); border-radius: 14px; padding: 22px 18px; color: var(--muted); }
+  .empty strong { display: block; color: var(--ink); font: 700 18px/1.2 var(--serif); margin-bottom: 6px; }
+
+  /* alerts card */
+  .alerts { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-top: 26px; }
+  .alerts p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .alerts p.ok { color: var(--go); margin: 0; }
+
+  ul.recent { list-style: none; margin: 0; padding: 0; }
+  ul.recent li { display: flex; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  ul.recent .tag { flex: none; width: 132px; font-weight: 650; }
+  ul.recent .tag.ok { color: var(--go); }
+  ul.recent .tag.no { color: var(--stop); }
+  ul.recent .tag.old { color: var(--muted); }
+  ul.recent .what { color: var(--muted); overflow-wrap: anywhere; }
+
+  .foot { margin-top: 34px; display: flex; justify-content: space-between; align-items: center; }
+  .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+           background: var(--ink); color: var(--paper); padding: 12px 18px; border-radius: 999px; font-size: 15px; max-width: 90vw; }
+  @media (max-width: 380px) { .stub { width: 108px; } .code { font-size: 34px; } }
+  @media (prefers-reduced-motion: no-preference) { button { transition: transform .08s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Doorman</div>
+    <div class="watch" id="watch" hidden><span class="dot" id="dot"></span><span id="watchText">Watching</span></div>
+  </header>
+
+  <main id="login" hidden>
+    <h1>Sign in</h1>
+    <p class="lead">Use the owner password you chose when you set up the server.</p>
+    <form id="loginForm">
+      <label for="pw">Owner password</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <p class="err" id="loginErr" role="alert"></p>
+      <button class="primary" type="submit" id="loginBtn">Sign in</button>
+    </form>
+  </main>
+
+  <main id="home" hidden>
+    <h1 id="headline">Nobody is waiting</h1>
+    <p class="lead" id="sub">When a new computer asks to use Excel Auto Typer, it shows up here.</p>
+
+    <div id="live" aria-live="polite"></div>
+
+    <section class="alerts" id="alertsCard" hidden>
+      <p id="alertsText"></p>
+      <button class="ghost" id="alertsBtn" type="button">Turn on alerts</button>
+    </section>
+
+    <h2 id="recentH" hidden>Recent decisions</h2>
+    <ul class="recent" id="recent"></ul>
+
+    <div class="foot">
+      <span class="meta" id="ver" style="color:var(--muted);font-size:13px"></span>
+      <button class="link" id="signOut" type="button">Sign out</button>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+let token = localStorage.getItem("dm_token") || "";
+let known = null;           // ids we've already seen (null until first load)
+let lastSig = "";
+let ttl = 300;
+let timer = null;
+let pushAvailable = false;
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 3200);
+}
+async function api(path, opts = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await fetch(path, { method: opts.method || "GET", headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && token && path !== "/api/login") { signOut(); throw new Error("Signed out"); }
+  if (!res.ok) { const e = new Error(data.error || "Something went wrong"); e.status = res.status; throw e; }
+  return data;
+}
+
+/* ---------- sign in / out ---------- */
+function showLogin() {
+  stopPolling();
+  $("#home").hidden = true; $("#login").hidden = false; $("#watch").hidden = true;
+  $("#pw").focus();
+}
+function signOut() {
+  token = ""; localStorage.removeItem("dm_token"); known = null; lastSig = "";
+  showLogin();
+}
+$("#signOut").onclick = signOut;
+$("#loginForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const btn = $("#loginBtn"); btn.disabled = true; $("#loginErr").textContent = "";
+  try {
+    const r = await api("/api/login", { method: "POST", body: { password: $("#pw").value } });
+    token = r.token; localStorage.setItem("dm_token", token); $("#pw").value = "";
+    showHome();
+  } catch (err) { $("#loginErr").textContent = err.message; }
+  btn.disabled = false;
+};
+
+/* ---------- home ---------- */
+function showHome() {
+  $("#login").hidden = true; $("#home").hidden = false; $("#watch").hidden = false;
+  refresh(); startPolling(); syncPush(); updateAlertsCard();
+}
+let lastActive = Date.now();
+["pointerdown", "keydown", "touchstart"].forEach(ev =>
+  addEventListener(ev, () => { lastActive = Date.now(); }, { passive: true }));
+// fast while you're looking at it (or someone is waiting), slow when idle: saves the free database quota
+function pollDelay() { return Date.now() - lastActive < 180000 ? 4000 : 45000; }
+function startPolling() {
+  stopPolling();
+  const loop = async () => {
+    if (!document.hidden && token) await refresh();
+    timer = setTimeout(loop, pollDelay());
+  };
+  timer = setTimeout(loop, pollDelay());
+}
+function stopPolling() { if (timer) clearTimeout(timer); timer = null; }
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && token) { lastActive = Date.now(); refresh(); document.title = "Doorman"; }
+});
+
+function statusText(s) {
+  return { once: "Approved once", always: "Always allowed", deny: "Denied", expired: "Expired" }[s] || s;
+}
+function statusClass(s) { return s === "once" || s === "always" ? "ok" : s === "deny" ? "no" : "old"; }
+
+async function refresh() {
+  let data;
+  try { data = await api("/api/pending"); }
+  catch (err) {
+    if (err.message !== "Signed out") { $("#dot").className = "dot off"; $("#watchText").textContent = "Offline - retrying"; }
+    return;
+  }
+  $("#dot").className = "dot"; $("#watchText").textContent = "Watching";
+  ttl = data.ttl; pushAvailable = data.push;
+  if (data.pending.length) lastActive = Date.now();  // keep polling fast while someone waits
+  const sig = data.pending.map(r => r.id).join() + "|" + data.recent.map(r => r.id + r.status).join();
+  announce(data.pending);
+  if (sig !== lastSig) { lastSig = sig; render(data); }
+  tick();
+}
+
+function announce(pending) {
+  const ids = new Set(pending.map(r => r.id));
+  if (known) {
+    const fresh = pending.filter(r => !known.has(r.id));
+    if (fresh.length) {
+      if (navigator.vibrate) navigator.vibrate([90, 60, 90]);
+      if (document.hidden) {
+        document.title = "(" + fresh.length + ") Doorman";
+        if ("Notification" in window && Notification.permission === "granted") {
+          navigator.serviceWorker.ready.then(reg => reg.showNotification("Access request", {
+            body: fresh[0].computer + " wants to use Excel Auto Typer. Code " + fresh[0].code,
+            tag: "req-" + fresh[0].id, icon: "/static/icon-192.png" })).catch(() => {});
+        }
+      }
+    }
+  }
+  known = ids;
+}
+
+function render(data) {
+  const live = $("#live"); live.textContent = "";
+  const n = data.pending.length;
+  $("#headline").textContent = n === 0 ? "Nobody is waiting" : n === 1 ? "One computer is waiting" : n + " computers are waiting";
+  $("#sub").textContent = n === 0
+    ? "When a new computer asks to use Excel Auto Typer, it shows up here."
+    : "Approve only if the code matches the one shown on that computer's screen.";
+  if (n === 0) {
+    const e = el("div", "empty");
+    e.append(el("strong", "", "All quiet"), document.createTextNode("Keep this page open, or turn on alerts so your phone tells you when someone asks."));
+    live.append(e);
+  }
+  data.pending.forEach(r => live.append(ticket(r)));
+
+  const list = $("#recent"); list.textContent = "";
+  $("#recentH").hidden = data.recent.length === 0;
+  data.recent.forEach(r => {
+    const li = el("li");
+    li.append(el("span", "tag " + statusClass(r.status), statusText(r.status)),
+              el("span", "what", r.computer + " - code " + r.code));
+    list.append(li);
+  });
+}
+
+function ticket(r) {
+  const wrap = el("div", "req");
+  const t = el("div", "ticket");
+  const main = el("div", "main");
+  main.append(el("div", "pc", r.computer), el("div", "meta", "Windows user " + r.user + " - from " + r.ip));
+  const clock = el("div", "clock"); clock.dataset.expires = String(Date.now() + (ttl - r.age) * 1000);
+  main.append(clock);
+  const stub = el("div", "stub");
+  stub.append(el("div", "code", r.code), el("small", "", "Code on their screen"));
+  t.append(main, stub);
+
+  const actions = el("div", "actions");
+  const once = el("button", "primary", "Approve once");
+  const always = el("button", "ghost", "Always allow");
+  const deny = el("button", "danger", "Deny");
+  [[once, "once"], [always, "always"], [deny, "deny"]].forEach(([b, a]) => {
+    b.type = "button";
+    b.onclick = () => decide(r.id, a, wrap, [once, always, deny]);
+  });
+  actions.append(once, always, deny);
+  wrap.append(t, actions);
+  return wrap;
+}
+
+async function decide(id, action, wrap, buttons) {
+  buttons.forEach(b => b.disabled = true);
+  try {
+    await api("/api/decide", { method: "POST", body: { id, action } });
+    toast(action === "deny" ? "Denied" : action === "once" ? "Approved once" : "Always allowed on that PC");
+    if (navigator.vibrate) navigator.vibrate(40);
+  } catch (err) { toast(err.message); }
+  lastSig = ""; refresh();
+}
+
+function tick() {
+  document.querySelectorAll(".clock").forEach(c => {
+    const left = Math.max(0, Math.round((Number(c.dataset.expires) - Date.now()) / 1000));
+    c.textContent = left > 0 ? "Open for " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") + " more" : "Expired";
+  });
+}
+setInterval(tick, 1000);
+
+/* ---------- alerts (lock-screen notifications) ---------- */
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+const canPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+function updateAlertsCard() {
+  const card = $("#alertsCard"), txt = $("#alertsText"), btn = $("#alertsBtn");
+  card.hidden = false; btn.hidden = false; txt.className = "";
+  if (isIOS && !standalone) {
+    txt.textContent = "To get alerts on iPhone, tap Share, then Add to Home Screen, and open Doorman from there.";
+    btn.hidden = true;
+  } else if (!canPush) {
+    txt.textContent = "This browser can't send alerts. Keep Doorman open to see new requests.";
+    btn.hidden = true;
+  } else if (Notification.permission === "granted") {
+    txt.textContent = "Alerts are on for this phone."; txt.className = "ok"; btn.hidden = true;
+  } else if (Notification.permission === "denied") {
+    txt.textContent = "Alerts are blocked. Allow notifications for this site in your phone's settings.";
+    btn.hidden = true;
+  } else {
+    txt.textContent = "Get a notification on your lock screen the moment someone asks.";
+  }
+}
+function b64ToBytes(s) {
+  const pad = "=".repeat((4 - s.length % 4) % 4);
+  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+async function syncPush() {
+  if (!canPush || Notification.permission !== "granted") return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await api("/api/push/subscribe", { method: "POST", body: { subscription: sub.toJSON() } });
+  } catch (_) {}
+}
+$("#alertsBtn").onclick = async () => {
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") return updateAlertsCard();
+    const { key } = await fetch("/api/push/key").then(r => r.json());
+    if (!key) { toast("Alerts work while Doorman is open. The server has no push keys."); return updateAlertsCard(); }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) ||
+      await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+    await api("/api/push/subscribe", { method: "POST", body: { subscription: sub.toJSON() } });
+    toast("Alerts are on");
+  } catch (err) { toast("Couldn't turn on alerts: " + err.message); }
+  updateAlertsCard();
+};
+
+/* ---------- start ---------- */
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+if (token) showHome(); else showLogin();
+</script>
+</body>
+</html>

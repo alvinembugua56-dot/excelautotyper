@@ -1,0 +1,6 @@
+config.json
+doorman-secrets.txt
+*.db
+__pycache__/
+.vercel/
+.env*
