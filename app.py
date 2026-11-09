@@ -248,6 +248,7 @@ def effective(r, now=None):
 def crash(e):
     if isinstance(e, HTTPException):  # normal web errors (404, 405 ...)
         return fail(e.description, e.code)
+    app.logger.exception("Unhandled server error")
     return fail("The server hit a problem talking to its database. Try again.", 500)
 
 
@@ -309,6 +310,8 @@ def login():
 def pending():
     if not owner_ok():
         return fail("Sign in first.", 401)
+    if not storage_ready():
+        return fail(NO_DB_MSG, 503)
     now = time.time()
     pend, done = [], []
     for rid, r in STORE.req_all().items():
@@ -329,6 +332,8 @@ def pending():
 def decide():
     if not owner_ok():
         return fail("Sign in first.", 401)
+    if not storage_ready():
+        return fail(NO_DB_MSG, 503)
     data = request.get_json(silent=True) or {}
     action = data.get("action")
     if action not in ("once", "always", "deny"):
@@ -423,6 +428,8 @@ def push_key():
 def push_subscribe():
     if not owner_ok():
         return fail("Sign in first.", 401)
+    if not storage_ready():
+        return fail(NO_DB_MSG, 503)
     sub = (request.get_json(silent=True) or {}).get("subscription") or {}
     endpoint = sub.get("endpoint", "")
     if not endpoint.startswith("https://") or "keys" not in sub:
