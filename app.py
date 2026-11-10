@@ -121,6 +121,34 @@ class RedisStore:
     def fail_clear(self, ip):
         self._cmd("DEL", f"fail:{ip}")
 
+    def device_get(self, device_id):
+        value = self._cmd("HGET", "devices", device_id)
+        return json.loads(value) if value else None
+
+    def device_all(self):
+        devices = self._pairs(self._cmd("HGETALL", "devices"))
+        return [
+            {"id": device_id, **json.loads(value),
+             "revoked": bool(self._cmd("SISMEMBER", "revoked_devices", device_id))}
+            for device_id, value in devices.items()
+        ]
+
+    def device_touch(self, device_id, computer, user, now):
+        device = self.device_get(device_id) or {"first_seen": now}
+        device.update(computer=computer, user=user, last_seen=now)
+        self._cmd("HSET", "devices", device_id, json.dumps(device))
+        return not bool(self._cmd("SISMEMBER", "revoked_devices", device_id))
+
+    def device_set_revoked(self, device_id, revoked, now):
+        if not self.device_get(device_id):
+            self._cmd("HSETNX", "devices", device_id, json.dumps({
+                "computer": "Unknown PC", "user": "?", "first_seen": now, "last_seen": now,
+            }))
+        if revoked:
+            self._cmd("SADD", "revoked_devices", device_id)
+        else:
+            self._cmd("SREM", "revoked_devices", device_id)
+
 
 class SqliteStore:
     """Plain file database for hosts with a real disk."""
@@ -133,6 +161,9 @@ class SqliteStore:
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS reqs (id TEXT PRIMARY KEY, data TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS subs (endpoint TEXT PRIMARY KEY, data TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS devices (
+                    id TEXT PRIMARY KEY, data TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0
+                );
             """)
 
     @contextlib.contextmanager
@@ -183,6 +214,49 @@ class SqliteStore:
 
     def fail_clear(self, ip):
         self.fails.pop(ip, None)
+
+    def device_get(self, device_id):
+        with self._c() as c:
+            row = c.execute(
+                "SELECT data, revoked FROM devices WHERE id=?", (device_id,)).fetchone()
+        if not row:
+            return None
+        return {**json.loads(row[0]), "id": device_id, "revoked": bool(row[1])}
+
+    def device_all(self):
+        with self._c() as c:
+            rows = c.execute("SELECT id, data, revoked FROM devices").fetchall()
+        return [
+            {"id": device_id, **json.loads(data), "revoked": bool(revoked)}
+            for device_id, data, revoked in rows
+        ]
+
+    def device_touch(self, device_id, computer, user, now):
+        with self._c() as c:
+            row = c.execute(
+                "SELECT data, revoked FROM devices WHERE id=?", (device_id,)).fetchone()
+            device = json.loads(row[0]) if row else {"first_seen": now}
+            device.update(computer=computer, user=user, last_seen=now)
+            revoked = row[1] if row else 0
+            c.execute(
+                "INSERT OR REPLACE INTO devices (id, data, revoked) VALUES (?, ?, ?)",
+                (device_id, json.dumps(device), revoked))
+        return not bool(revoked)
+
+    def device_set_revoked(self, device_id, revoked, now):
+        with self._c() as c:
+            row = c.execute(
+                "SELECT data FROM devices WHERE id=?", (device_id,)).fetchone()
+            if row:
+                data = row[0]
+            else:
+                data = json.dumps({
+                    "computer": "Unknown PC", "user": "?", "first_seen": now,
+                    "last_seen": now,
+                })
+            c.execute(
+                "INSERT OR REPLACE INTO devices (id, data, revoked) VALUES (?, ?, ?)",
+                (device_id, data, int(revoked)))
 
 
 STORE = RedisStore(KV_URL, KV_TOKEN) if (KV_URL and KV_TOKEN) else None
@@ -324,7 +398,9 @@ def pending():
     done.sort(key=lambda x: -x["_t"])
     for row in pend + done:
         row.pop("_t")
-    return jsonify(pending=pend, recent=done[:12], ttl=TTL,
+    devices = STORE.device_all()
+    devices.sort(key=lambda d: -d["last_seen"])
+    return jsonify(pending=pend, recent=done[:12], devices=devices, ttl=TTL,
                    push=bool(VAPID_PUBLIC and VAPID_PRIVATE))
 
 
@@ -343,7 +419,38 @@ def decide():
         return fail("That request is no longer waiting.", 409)
     r["status"], r["decided"] = action, time.time()
     STORE.req_put(str(data["id"]), r)
+    if action == "always" and r.get("device_id"):
+        STORE.device_touch(r["device_id"], r["computer"], r["user"], time.time())
+        STORE.device_set_revoked(r["device_id"], False, time.time())
     return jsonify(ok=True)
+
+
+def valid_device_id(value):
+    return isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+
+
+@app.post("/api/devices/revoke")
+def revoke_device():
+    return set_device_revoked(True)
+
+
+@app.post("/api/devices/allow")
+def allow_device():
+    return set_device_revoked(False)
+
+
+def set_device_revoked(revoked):
+    if not owner_ok():
+        return fail("Sign in first.", 401)
+    if not storage_ready():
+        return fail(NO_DB_MSG, 503)
+    device_id = (request.get_json(silent=True) or {}).get("id")
+    if not valid_device_id(device_id):
+        return fail("Unknown computer.", 400)
+    if not STORE.device_get(device_id):
+        return fail("That computer is no longer registered.", 404)
+    STORE.device_set_revoked(device_id, revoked, time.time())
+    return jsonify(ok=True, revoked=revoked)
 
 
 # ------------------------------------------------------------------ Windows app API
@@ -356,6 +463,22 @@ def ping():
     return jsonify(ok=True, push=bool(VAPID_PUBLIC and VAPID_PRIVATE), storage=STORE.kind)
 
 
+@app.post("/api/device/check")
+def check_device():
+    if not app_key_ok():
+        return fail("Wrong app key.", 401)
+    if not storage_ready():
+        return fail(NO_DB_MSG, 503)
+    data = request.get_json(silent=True) or {}
+    device_id = data.get("device_id")
+    if not valid_device_id(device_id):
+        return fail("Invalid computer ID.", 400)
+    allowed = STORE.device_touch(
+        device_id, clean(data.get("computer")) or "Unknown PC",
+        clean(data.get("user")) or "?", time.time())
+    return jsonify(allowed=allowed)
+
+
 @app.post("/api/request")
 def create_request():
     if not APP_KEY:
@@ -365,6 +488,9 @@ def create_request():
     if not storage_ready():
         return fail(NO_DB_MSG, 503)
     data = request.get_json(silent=True) or {}
+    device_id = data.get("device_id", "")
+    if device_id and not valid_device_id(device_id):
+        return fail("Invalid computer ID.", 400)
     ip = client_ip()
     now = time.time()
     existing = STORE.req_all()
@@ -377,7 +503,8 @@ def create_request():
     code = clean(data.get("code"), 8)
     STORE.req_put(rid, {"poll_secret": secret, "computer": computer,
                         "user": clean(data.get("user")) or "?", "code": code, "ip": ip,
-                        "created": now, "status": "pending", "decided": None})
+                        "device_id": device_id or None, "created": now,
+                        "status": "pending", "decided": None})
     payload = {"title": "Access request",
                "body": f"{computer} wants to use Excel Auto Typer. Code {code}", "id": rid}
     if ON_VERCEL:   # serverless: must finish before we answer
