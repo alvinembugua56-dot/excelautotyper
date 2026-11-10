@@ -103,6 +103,18 @@
   .actions .primary { grid-column: 1 / -1; }
   .req + .req { margin-top: 22px; }
 
+  .devices { margin-top: 28px; }
+  .device-list { display: grid; gap: 10px; }
+  .device-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+                padding: 12px 14px; }
+  .device-row .details { min-width: 0; }
+  .device-row .pc { font-weight: 700; overflow-wrap: anywhere; }
+  .device-row .meta { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .device-row .state { font-size: 12px; font-weight: 700; color: var(--go); }
+  .device-row.revoked .state { color: var(--stop); }
+  .device-row button { flex: none; min-height: 40px; padding: 0 12px; }
+
   .empty { border: 1.5px dashed var(--line); border-radius: 14px; padding: 22px 18px; color: var(--muted); }
   .empty strong { display: block; color: var(--ink); font: 700 18px/1.2 var(--serif); margin-bottom: 6px; }
 
@@ -157,6 +169,12 @@
 
     <h2 id="recentH" hidden>Recent decisions</h2>
     <ul class="recent" id="recent"></ul>
+
+    <section class="devices" id="devicesSection" hidden>
+      <h2>Remembered computers</h2>
+      <p class="lead">Disapprove a computer to block this app on it, even if it was previously allowed.</p>
+      <div class="device-list" id="devices"></div>
+    </section>
 
     <div class="foot">
       <span class="meta" id="ver" style="color:var(--muted);font-size:13px"></span>
@@ -258,7 +276,9 @@ async function refresh() {
   $("#dot").className = "dot"; $("#watchText").textContent = "Watching";
   ttl = data.ttl; pushAvailable = data.push;
   if (data.pending.length) lastActive = Date.now();  // keep polling fast while someone waits
-  const sig = data.pending.map(r => r.id).join() + "|" + data.recent.map(r => r.id + r.status).join();
+  const devices = data.devices || [];
+  const sig = data.pending.map(r => r.id).join() + "|" + data.recent.map(r => r.id + r.status).join()
+    + "|" + devices.map(d => d.id + d.revoked + d.last_seen).join();
   announce(data.pending);
   if (sig !== lastSig) { lastSig = sig; render(data); }
   tick();
@@ -305,6 +325,46 @@ function render(data) {
               el("span", "what", r.computer + " - code " + r.code));
     list.append(li);
   });
+
+  const deviceList = $("#devices");
+  deviceList.textContent = "";
+  const devices = data.devices || [];
+  $("#devicesSection").hidden = devices.length === 0;
+  devices.forEach(d => deviceList.append(deviceCard(d)));
+}
+
+function deviceCard(device) {
+  const revoked = device.revoked;
+  const row = el("div", "device-row" + (revoked ? " revoked" : ""));
+  const details = el("div", "details");
+  details.append(
+    el("div", "pc", device.computer || "Unknown PC"),
+    el("div", "meta", "Windows user " + (device.user || "?") +
+      " · Last seen " + new Date(device.last_seen * 1000).toLocaleString()),
+    el("div", "state", revoked ? "Disapproved" : "Allowed")
+  );
+  const button = el("button", revoked ? "ghost" : "danger",
+                   revoked ? "Allow again" : "Disapprove");
+  button.type = "button";
+  button.setAttribute("aria-label",
+    (revoked ? "Allow access for " : "Disapprove ") + (device.computer || "Unknown PC"));
+  button.onclick = () => setDeviceAccess(device, !revoked, button);
+  row.append(details, button);
+  return row;
+}
+
+async function setDeviceAccess(device, revoked, button) {
+  button.disabled = true;
+  try {
+    await api("/api/devices/" + (revoked ? "revoke" : "allow"),
+              { method: "POST", body: { id: device.id } });
+    toast(revoked ? "Computer disapproved" : "Computer allowed again");
+    lastSig = "";
+    await refresh();
+  } catch (err) {
+    toast(err.message);
+    button.disabled = false;
+  }
 }
 
 function ticket(r) {
